@@ -141,7 +141,7 @@ void Man::get_entry(const string &entry_name) {
 
   if (table.contains(entry_name)) {
     get_json_from_file(entries, table[entry_name]);
-    cout << (string) json::from_cbor(entries[entry_name].get<std::vector<uint8_t>>()) << endl;
+    cout << (string) json::from_cbor(entries[entry_name].get<std::vector<uint8_t>>());
   } else {
     similar_entries(entry_name);
     throw SRE("No entry for " + entry_name);
