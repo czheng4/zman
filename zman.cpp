@@ -7,9 +7,30 @@ using namespace nlohmann;
 using namespace std;
 
 
-#define STORE_DIR_PATH "/.zman/"
+#define DIR_NAME "/.zman"
+#define TABLE_PATH DIR_NAME + "/table.json"
 #define MAX_FILE_SIZE 100000000  // 100 MB
 typedef std::runtime_error SRE;
+
+
+inline void get_json_from_file(json &j, const string &filename) {
+  ifstream ifs;
+  j.clear();
+
+  ifs.open(filename, ios::in);
+  if (ifs.fail()) throw SRE ("Couldn't open file " + filename);
+  ifs >> j;
+  ifs.close();
+}
+
+inline void write_json_to_file(const json &j, const string &filename) {
+  ofstream ofs;
+
+  ofs.open(filename, ios::out | ios::trunc);
+  if (ofs.fail()) throw SRE ("Couldn't open file " + filename);
+  ofs << j;
+  ofs.close();
+}
 
 
 class Man {
@@ -17,45 +38,80 @@ public:
   Man(const char *a, const char *entry_name);
   ~Man() {};
 
-  void add(const char *entry_name);
+  void add(const string &entry_name);
   void create_default_file();
+  void init_json_file(const string &filename);
+  void set_entry(json &j, const string &entry_name, const string &filename, bool overwrite);
+  void get_entry(const string &entry_name);
 
-  string user_path;
+  string home;
 };
 
 
-
+/** Get the home path and 
+   create ~/DIR_NAME directory and ~/TABLE_PATH file if they do not exist */
 void Man::create_default_file() {
-  FILE *fp;
   struct stat buf;
-  int exists;
-  char table[200], user[200];
   ofstream o;
-  int i;
+  string s;
+  
 
-  fp = popen("echo ~", "r");
-  i = fread(user, sizeof(char), 200, fp);
-  user[i-1] = '\0';
-  pclose(fp);
+  home = (string) getenv("HOME");
+  s = home + DIR_NAME;
 
-  strcpy(table, user);
-  strcat(table, STORE_DIR_PATH);
-  user_path = (string) table;
-
-  if (stat(table, &buf) < 0) {
-    cout << mkdir(table, 0744) << endl;
+  if (stat(s.c_str(), &buf) < 0) {
+    if (mkdir(s.c_str(), 0700) == -1) {
+      throw SRE("Can't create directory " + s);
+    }
   }
 
-  strcat(table, "table.json");
-  if (stat(table, &buf) < 0) {
-    o.open(table, ios::out);
-    o << "{}";
-    o.close();
-  }
-
-
+  s = home + TABLE_PATH;
+  if (stat(s.c_str(), &buf) < 0) init_json_file(s);
   
 }
+
+
+void Man::get_entry(const string &entry_name) {
+  json table, entries;
+  string s;
+
+  get_json_from_file(table, home + TABLE_PATH);
+
+  if (table.contains(entry_name)) {
+    get_json_from_file(entries, table[entry_name]);
+    cout << (string) entries[entry_name] << endl;
+  } else {
+    throw SRE("No entry for " + entry_name);
+  }
+}
+
+
+void Man::init_json_file(const string &filename) {
+  ofstream o;
+  o.open(filename, ios::out);
+  if (o.fail()) throw SRE ("Can't create file " + filename);
+  o << "{}";
+  o.close();
+}
+
+
+
+void Man::set_entry(json &j, const string &entry_name, const string &filename, bool overwrite) {
+  string s, line;
+  ofstream o;
+
+  if (overwrite) s = "";
+  else s = j[entry_name];
+
+  while (getline(cin, line)) s += line + "\n";
+
+  s.pop_back();
+  cout << s << endl;
+  j[entry_name] = s;
+  write_json_to_file(j, filename);
+}
+
+
 Man::Man(const char *a, const char *entry_name) {
   string s;
 
@@ -73,32 +129,50 @@ Man::Man(const char *a, const char *entry_name) {
   } else if (s == "list") {
 
   } else if (s == "get") {
-
+    get_entry(entry_name);
   } else {
     throw SRE("actions must be one of add|append|remove|list|get");
   }
 }
 
 
-void Man::add(const char *entry_name) {
+void Man::add(const string &entry_name) {
   json table;
+  json content;
   string filename;
-  ifstream f;
+  fstream f, entry_f;
   string s;
+  char c;
+  char buf[1024];
+  int i;
+  struct stat stat_buf;
 
-  s = user_path + "table.json";
+  s = home + TABLE_PATH;
 
-  f.open(s, ios::in);
+  get_json_from_file(table, s);
+  
+  if (table.contains(entry_name)) {
+    sprintf(buf, "Entry %s exists. Use overwrite action to overwrite it", entry_name.c_str());
+    throw SRE (buf);
+  } 
 
-  f >> table;
-  cout << table << endl;
+  i = 0;
+  while (1) {
+    sprintf(buf, "%s%s/zman_%d.json", home.c_str(), DIR_NAME, i);
+    if (stat(buf, &stat_buf) < 0) { 
+      content = json::object();
+      break;
+    }
+    if (stat_buf.st_size < MAX_FILE_SIZE) {
+      get_json_from_file(content, (string) buf);
+      break;
+    }
+    i++;
+  }
 
-
-
-
-  f.close();
-
-
+  table[entry_name] = (string) buf;
+  write_json_to_file(table, s);
+  set_entry(content, entry_name, buf, true);
 }
 
 void usage() {
@@ -121,7 +195,11 @@ int main (int argc, char **argv) {
 
   a = argv[1];
 
-  man = new Man(argv[1], argc >= 3 ? argv[2] : NULL);
+  try {
+    man = new Man(argv[1], argc >= 3 ? argv[2] : NULL);
+  } catch (SRE &e) {
+    cerr << e.what() << endl;
+  }
 
 
 
