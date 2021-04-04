@@ -2,6 +2,8 @@
 #include <fstream>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <cstdlib>
+#include <cstdio>
 #include "include/json.hpp"
 using namespace nlohmann;
 using namespace std;
@@ -26,6 +28,12 @@ inline void get_json_from_file(json &j, const string &filename) {
 inline void write_json_to_file(const json &j, const string &filename) {
   ofstream ofs;
 
+  /* if the json is empty, we simply delete them */
+  if (j.size() == 0) {
+    if (remove(filename.c_str()) != 0) throw SRE ("Couldn't open file " + filename);
+    return;
+  }
+
   ofs.open(filename, ios::out | ios::trunc);
   if (ofs.fail()) throw SRE ("Couldn't open file " + filename);
   ofs << j;
@@ -38,11 +46,13 @@ public:
   Man(const char *a, const char *entry_name);
   ~Man() {};
 
-  void add(const string &entry_name);
+  void add(const string &entry_name, bool append, bool overwrite = false);
   void create_default_file();
   void init_json_file(const string &filename);
-  void set_entry(json &j, const string &entry_name, const string &filename, bool overwrite);
+  void set_entry(json &j, const string &entry_name, const string &filename, bool append);
   void get_entry(const string &entry_name);
+  void remove_entry(const string &entry_name);
+  void list_entry();
 
   string home;
 };
@@ -71,9 +81,27 @@ void Man::create_default_file() {
 }
 
 
+void Man::remove_entry(const string &entry_name) {
+  json table, entries;
+
+  get_json_from_file(table, home + TABLE_PATH);
+
+  if (table.contains(entry_name)) {
+    get_json_from_file(entries, table[entry_name]);
+    entries.erase(entry_name);
+    write_json_to_file(entries, table[entry_name]);
+
+    table.erase(entry_name);
+    write_json_to_file(table, home + TABLE_PATH);
+
+    printf("Delete entry %s successfully\n", entry_name.c_str());
+  } else {
+    throw SRE("No entry for " + entry_name);
+  }
+}
+
 void Man::get_entry(const string &entry_name) {
   json table, entries;
-  string s;
 
   get_json_from_file(table, home + TABLE_PATH);
 
@@ -86,6 +114,26 @@ void Man::get_entry(const string &entry_name) {
 }
 
 
+void Man::list_entry() {
+  json table;
+  vector <string> keys;
+  int i;
+
+  get_json_from_file(table, home + TABLE_PATH);
+  for (auto it = table.begin(); it != table.end(); ++it) {
+    keys.push_back(it.key());
+  }
+
+  if (keys.size() == 0) {
+    cout << "Entries are empty" << endl; 
+    return;
+  }
+
+  sort(keys.begin(), keys.end());
+
+  for (i = 0; i < keys.size(); i++) cout << keys[i] << endl;
+}
+
 void Man::init_json_file(const string &filename) {
   ofstream o;
   o.open(filename, ios::out);
@@ -96,17 +144,16 @@ void Man::init_json_file(const string &filename) {
 
 
 
-void Man::set_entry(json &j, const string &entry_name, const string &filename, bool overwrite) {
+void Man::set_entry(json &j, const string &entry_name, const string &filename, bool append) {
   string s, line;
   ofstream o;
 
-  if (overwrite) s = "";
-  else s = j[entry_name];
+  if (append && j.contains(entry_name)) s = j[entry_name];
+  else s = "";
 
   while (getline(cin, line)) s += line + "\n";
 
   s.pop_back();
-  cout << s << endl;
   j[entry_name] = s;
   write_json_to_file(j, filename);
 }
@@ -120,23 +167,34 @@ Man::Man(const char *a, const char *entry_name) {
   create_default_file();
   if (s == "add") {
     if (entry_name == NULL) throw SRE("add action must have entry name");
-    add(entry_name);
+    add(entry_name, false);
 
   } else if (s == "append") {
+    if (entry_name == NULL) throw SRE("add action must have entry name");
+    add(entry_name, true);
 
-  } else if (s == "remove") {
+  } else if (s == "remove" || s == "rm") {
+    if (entry_name == NULL) throw SRE("add action must have entry name");
+    remove_entry(entry_name);
 
-  } else if (s == "list") {
+  } else if (s == "list" || s == "l") {
+    list_entry();
 
-  } else if (s == "get") {
+  } else if (s == "get" || s == "g") {
+    if (entry_name == NULL) throw SRE("add action must have entry name");
     get_entry(entry_name);
+
+  } else if(s == "overwrite" || s == "o") {
+    if (entry_name == NULL) throw SRE("add action must have entry name");
+    add(entry_name, false, true);
+
   } else {
-    throw SRE("actions must be one of add|append|remove|list|get");
+    throw SRE("actions must be one of add|append|remove|list|get|overwrite");
   }
 }
 
 
-void Man::add(const string &entry_name) {
+void Man::add(const string &entry_name, bool append, bool overwrite) {
   json table;
   json content;
   string filename;
@@ -151,7 +209,7 @@ void Man::add(const string &entry_name) {
 
   get_json_from_file(table, s);
   
-  if (table.contains(entry_name)) {
+  if (table.contains(entry_name) && !append && !overwrite) {
     sprintf(buf, "Entry %s exists. Use overwrite action to overwrite it", entry_name.c_str());
     throw SRE (buf);
   } 
@@ -172,17 +230,18 @@ void Man::add(const string &entry_name) {
 
   table[entry_name] = (string) buf;
   write_json_to_file(table, s);
-  set_entry(content, entry_name, buf, true);
+  set_entry(content, entry_name, buf, append);
 }
 
 void usage() {
   cerr << "zman action [entry_name]" << endl;
   cerr << "Actions:" << endl;
-  cerr << "  add :   add a new entry. It overwrites the content if the entry exists" << endl;
-  cerr << "  append: append the new content to a entry" << endl;
-  cerr << "  remove: remove a entry" << endl;
-  cerr << "  list:   list all enties" << endl;
-  cerr << "  get:    get the content of an entry" << endl;
+  cerr << "  add :        add a new entry" << endl;
+  cerr << "  o/overwrite: overwrite a entry with new content";
+  cerr << "  append:      append the new content to a entry" << endl;
+  cerr << "  rm/remove:   remove a entry" << endl;
+  cerr << "  l/list:      list all enties" << endl;
+  cerr << "  g/get:       get the content of an entry" << endl;
 }
 
 
@@ -200,9 +259,5 @@ int main (int argc, char **argv) {
   } catch (SRE &e) {
     cerr << e.what() << endl;
   }
-
-
-
-
 
 }
