@@ -198,26 +198,26 @@ Man::Man(const char *a, const char *entry_name) {
 
   create_default_file();
   if (s == "add") {
-    if (entry_name == NULL) throw SRE("add_entry action must have entry name");
+    if (entry_name == NULL) throw SRE("add action must have entry name");
     add_entry(entry_name, false);
 
   } else if (s == "append") {
-    if (entry_name == NULL) throw SRE("add_entry action must have entry name");
+    if (entry_name == NULL) throw SRE("append action must have entry name");
     add_entry(entry_name, true);
 
   } else if (s == "remove" || s == "rm") {
-    if (entry_name == NULL) throw SRE("add_entry action must have entry name");
+    if (entry_name == NULL) throw SRE("remove action must have entry name");
     remove_entry(entry_name);
 
   } else if (s == "list" || s == "l") {
     list_entries();
 
   } else if (s == "get" || s == "g") {
-    if (entry_name == NULL) throw SRE("add_entry action must have entry name");
+    if (entry_name == NULL) throw SRE("get action must have entry name");
     get_entry(entry_name);
 
   } else if(s == "overwrite" || s == "o") {
-    if (entry_name == NULL) throw SRE("add_entry action must have entry name");
+    if (entry_name == NULL) throw SRE("overwrite action must have entry name");
     add_entry(entry_name, false, true);
 
   } else {
@@ -274,7 +274,7 @@ void Man::add_entry(const string &entry_name, bool append, bool overwrite) {
 void usage() {
   cerr << "zman action [entry_name]" << endl;
   cerr << "Actions:" << endl;
-  cerr << "  add_entry :  add_entry a new entry" << endl;
+  cerr << "  add:         add a new entry" << endl;
   cerr << "  o/overwrite: overwrite a entry with new content" << endl;
   cerr << "  append:      append the new content to a entry" << endl;
   cerr << "  rm/remove:   remove a entry" << endl;

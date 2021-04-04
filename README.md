@@ -19,7 +19,7 @@ UNIX> cp zman /usr/local/bin/  # I copy this to /usr/local/bin, which is my goba
 UNIX> zman
 zman action [entry_name]
 Actions:
-  add_entry :  add_entry a new entry
+  add:         add a new entry
   o/overwrite: overwrite a entry with new content
   append:      append the new content to a entry
   rm/remove:   remove a entry
