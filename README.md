@@ -5,7 +5,7 @@ powerful to help us to look up some useful command lines, system calls, etc, it 
 to get lost there. The goal of `zman` is to help you manage your own `man` page. 
 
 
-# How to use it
+## How to use it
 Let's clone this repo and compiler it first.
 ```
 UNIX> git clone https://github.com/czheng4/zman.git
@@ -52,4 +52,10 @@ git add [file]   /* add the file */
 git commit -m "message"
 git push
 ```
+
+## What if I switch to another computer
+`zman` stores information in the directory `~/.zman/`. 
+If you switch to another computer, simply copy this directory over and reinstall `zman`program.
+
+
 
