@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <cstdlib>
 #include <cstdio>
+#include <vector>
 #include "include/json.hpp"
 using namespace nlohmann;
 using namespace std;
@@ -140,7 +141,7 @@ void Man::get_entry(const string &entry_name) {
 
   if (table.contains(entry_name)) {
     get_json_from_file(entries, table[entry_name]);
-    cout << (string) entries[entry_name] << endl;
+    cout << (string) json::from_cbor(entries[entry_name].get<std::vector<uint8_t>>()) << endl;
   } else {
     similar_entries(entry_name);
     throw SRE("No entry for " + entry_name);
@@ -179,14 +180,16 @@ void Man::get_all_entries(vector <string> &keys) {
 void Man::set_entry(json &j, const string &entry_name, const string &filename, bool append) {
   string s, line;
   ofstream o;
+  char *c;
 
-  if (append && j.contains(entry_name)) s = (string) j[entry_name] + "\n";
+  if (append && j.contains(entry_name)) s = (string) json::from_cbor(j[entry_name].get<std::vector<uint8_t>>()) + "\n";
   else s = "";
 
   while (getline(cin, line)) s += line + "\n";
 
   s.pop_back();
-  j[entry_name] = s;
+
+  j[entry_name] = json::to_cbor(s);
   write_json_to_file(j, filename);
 }
 
