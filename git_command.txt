@@ -1,0 +1,7 @@
+git branch -a             /* show the all branch */
+git checkout branch_name  /* check out a branch */
+git branch -d branch_name /* delete a local branch */
+
+git add [file]   /* add the file */
+git commit -m "message"
+git push
