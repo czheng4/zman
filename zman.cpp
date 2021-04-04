@@ -109,7 +109,7 @@ void Man::similar_entries(const string &entry_name) {
   if (rs != "") {
     rs.pop_back();
     rs.pop_back();
-    printf("Did you mean %s\n", rs.c_str());
+    fprintf(stderr, "Did you mean %s\n", rs.c_str());
   }
 
 }
