@@ -5,40 +5,74 @@
 #include <cstdlib>
 #include <cstdio>
 #include <vector>
-#include "include/json.hpp"
-using namespace nlohmann;
+#include <map>
 using namespace std;
 
 
 #define DIR_NAME "/.zman"
-#define TABLE_PATH DIR_NAME + "/table.json"
+#define TABLE_PATH DIR_NAME + "/table.txt"
 #define MAX_FILE_SIZE 100000000  // 100 MB
 typedef std::runtime_error SRE;
 
 
-inline void get_json_from_file(json &j, const string &filename) {
-  ifstream ifs;
-  j.clear();
+inline void get_map_from_file(map <string, string> &m, const string &filename) {
+  FILE *f;
+  int size;
+  char *key, *val;
+  string s;
+  int i;
 
-  ifs.open(filename, ios::in);
-  if (ifs.fail()) throw SRE ("Couldn't open file " + filename);
-  ifs >> j;
-  ifs.close();
+
+  f = fopen(filename.c_str(), "r");
+  if (f == NULL) throw SRE ("Couldn't open file " + filename);
+  
+  while (fread(&size, sizeof(int), 1, f) == 1) {
+    key = new char[size + 1];
+    key[size] = '\0';
+    if (fread(key, sizeof(char), size, f) != size) throw SRE("Internal error: file is being tampered");
+    if (fread(&size, sizeof(int), 1, f) != 1) throw SRE("Internal error: file is being tampered");
+
+    val = new char[size + 1];
+    val[size] = '\0';
+
+    if (fread(val, sizeof(char), size, f) != size) throw SRE("Internal error: file is being tampered");
+
+    s = "";
+    for (i = 0; i < size; i++) s += val[i];
+    m.insert(make_pair((string)key, s));
+
+    delete key;
+    delete val;
+  }
+
+  fclose(f);
 }
 
-inline void write_json_to_file(const json &j, const string &filename) {
-  ofstream ofs;
+inline void write_map_to_file(const map <string, string> &m, const string &filename) {
+  FILE *f;
+  int size;
+  map <string, string>::const_iterator mit;
 
   /* if the json is empty, we simply delete them */
-  if (j.size() == 0 && filename.find("table.json") == string::npos) {
+  if (m.size() == 0 && filename.find("table.txt") == string::npos) {
     if (remove(filename.c_str()) != 0) throw SRE ("Couldn't open file " + filename);
     return;
   }
 
-  ofs.open(filename, ios::out | ios::trunc);
-  if (ofs.fail()) throw SRE ("Couldn't open file " + filename);
-  ofs << j;
-  ofs.close();
+  f = fopen(filename.c_str(), "w");
+  if (f == NULL) throw SRE ("Couldn't open file " + filename);
+  
+  for (mit = m.begin(); mit != m.end(); ++mit) {
+    size = (mit->first).size();
+    fwrite(&size, sizeof(int), 1, f);
+    fwrite((mit->first).c_str(), sizeof(char), size, f);
+
+    size = (mit->second).size();
+    fwrite(&size, sizeof(int), 1, f);
+    fwrite((mit->second).c_str(), sizeof(char), size, f);
+  }
+
+  fclose(f);
 }
 
 inline string to_lowercase(const string &from) {
@@ -59,15 +93,16 @@ public:
 protected:
 
   void create_default_file();
-  void set_entry(json &j, const string &entry_name, const string &filename, bool append);
+  void set_entry(const string &entry_name, const string &filename, bool append);
   void add_entry(const string &entry_name, bool append, bool overwrite = false);
   void get_entry(const string &entry_name);
   void remove_entry(const string &entry_name);
   void list_entries();
-  void get_all_entries(vector <string> &entries);
   void similar_entries(const string &entry_name);
 
   string home;
+  map <string, string> entries; /* key is the entry_name and val is filename where it stores the content */
+  map <string, string> content; /* key is the entry_name and val is its content */
 };
 
 
@@ -89,21 +124,19 @@ void Man::create_default_file() {
   }
 
   s = home + TABLE_PATH;
-  if (stat(s.c_str(), &buf) < 0) write_json_to_file(json::object(), s);
-  
+  if (stat(s.c_str(), &buf) < 0) write_map_to_file(entries, s);
 }
 
 void Man::similar_entries(const string &entry_name) {
-  vector <string> keys;
+
   string s, s2, rs;
   size_t i;
-  get_all_entries(keys);
 
   rs = "";
   s = to_lowercase(entry_name);
-  for (i = 0; i < keys.size(); i++) {
-    s2 = to_lowercase(keys[i]);
-    if (s.find(s2) != string::npos || s2.find(s) != string::npos) rs += "\"" + keys[i] + "\", ";
+  for (auto mit = entries.begin(); mit != entries.end(); ++mit) {
+    s2 = to_lowercase(mit->first);
+    if (s.find(s2) != string::npos || s2.find(s) != string::npos) rs += "\"" + mit->first + "\", ";
   }
 
   if (rs != "") {
@@ -115,17 +148,15 @@ void Man::similar_entries(const string &entry_name) {
 }
 
 void Man::remove_entry(const string &entry_name) {
-  json table, entries;
 
-  get_json_from_file(table, home + TABLE_PATH);
 
-  if (table.contains(entry_name)) {
-    get_json_from_file(entries, table[entry_name]);
+  if (entries.find(entry_name) != entries.end()) {
+    get_map_from_file(content, entries[entry_name]);
+    content.erase(entry_name);
+    write_map_to_file(content, entries[entry_name]);
+
     entries.erase(entry_name);
-    write_json_to_file(entries, table[entry_name]);
-
-    table.erase(entry_name);
-    write_json_to_file(table, home + TABLE_PATH);
+    write_map_to_file(entries, home + TABLE_PATH);
 
     printf("Delete entry %s successfully\n", entry_name.c_str());
   } else {
@@ -135,13 +166,11 @@ void Man::remove_entry(const string &entry_name) {
 }
 
 void Man::get_entry(const string &entry_name) {
-  json table, entries;
+ 
 
-  get_json_from_file(table, home + TABLE_PATH);
-
-  if (table.contains(entry_name)) {
-    get_json_from_file(entries, table[entry_name]);
-    cout << (string) json::from_cbor(entries[entry_name].get<std::vector<uint8_t>>());
+  if (entries.find(entry_name) != entries.end()) {
+    get_map_from_file(content, entries[entry_name]);
+    cout << content[entry_name];
   } else {
     similar_entries(entry_name);
     throw SRE("No entry for " + entry_name);
@@ -151,46 +180,71 @@ void Man::get_entry(const string &entry_name) {
 
 void Man::list_entries() {
 
-  vector <string> keys;
-  size_t i;
-
-  get_all_entries(keys);
-
-  if (keys.size() == 0) {
+  
+  if (entries.size() == 0) {
     cout << "Entries are empty" << endl; 
     return;
   }
 
-  sort(keys.begin(), keys.end());
-
-  for (i = 0; i < keys.size(); i++) cout << keys[i] << endl;
-}
-
-void Man::get_all_entries(vector <string> &keys) {
-  json table;
-
-  get_json_from_file(table, home + TABLE_PATH);
-  for (auto it = table.begin(); it != table.end(); ++it) {
-    keys.push_back(it.key());
-  }
+  for (auto mit = entries.begin(); mit != entries.end(); ++mit) cout << mit->first << endl;
 }
 
 
 
-void Man::set_entry(json &j, const string &entry_name, const string &filename, bool append) {
+
+void Man::set_entry(const string &entry_name, const string &filename, bool append) {
   string s, line;
   ofstream o;
-  char *c;
 
-  if (append && j.contains(entry_name)) s = (string) json::from_cbor(j[entry_name].get<std::vector<uint8_t>>()) + "\n";
+
+  if (append && content.find(entry_name) != content.end()) s = content[entry_name];
   else s = "";
 
   while (getline(cin, line)) s += line + "\n";
 
   s.pop_back();
 
-  j[entry_name] = json::to_cbor(s);
-  write_json_to_file(j, filename);
+  content[entry_name] = s;
+  write_map_to_file(content, filename);
+}
+
+void Man::add_entry(const string &entry_name, bool append, bool overwrite) {
+  string filename;
+  string s;
+  char c;
+  char buf[1024];
+  int i;
+  struct stat stat_buf;
+
+  s = home + TABLE_PATH;
+  
+  if (entries.find(entry_name) != entries.end() && !append && !overwrite) {
+    sprintf(buf, "Entry %s exists. Use overwrite action to overwrite it", entry_name.c_str());
+    throw SRE (buf);
+  } 
+
+  i = 0;
+  while (1) {
+    sprintf(buf, "%s%s/zman_%d.txt", home.c_str(), DIR_NAME, i);
+    if (stat(buf, &stat_buf) < 0) break;
+    
+    if (stat_buf.st_size < MAX_FILE_SIZE) {
+      get_map_from_file(content, (string) buf);
+      break;
+    }
+    i++;
+  }
+
+
+  set_entry(entry_name, buf, append);
+
+  if (append == false && overwrite == false) {
+    entries[entry_name] = strdup(buf);
+    write_map_to_file(entries, s);
+  }
+  if (append) printf("Append to entry %s successfully\n", entry_name.c_str());
+  else if (overwrite) printf("Overwrite entry %s successfully\n", entry_name.c_str());
+  else printf("Add new entry %s successfully\n", entry_name.c_str());
 }
 
 
@@ -200,6 +254,10 @@ Man::Man(const char *a, const char *entry_name) {
   s = (string) a;
 
   create_default_file();
+  get_map_from_file(entries, home + TABLE_PATH);
+
+  // get_all_entries();
+
   if (s == "add") {
     if (entry_name == NULL) throw SRE("add action must have entry name");
     add_entry(entry_name, false);
@@ -229,50 +287,7 @@ Man::Man(const char *a, const char *entry_name) {
 }
 
 
-void Man::add_entry(const string &entry_name, bool append, bool overwrite) {
-  json table;
-  json content;
-  string filename;
-  fstream f, entry_f;
-  string s;
-  char c;
-  char buf[1024];
-  int i;
-  struct stat stat_buf;
 
-  s = home + TABLE_PATH;
-
-  get_json_from_file(table, s);
-  
-  if (table.contains(entry_name) && !append && !overwrite) {
-    sprintf(buf, "Entry %s exists. Use overwrite action to overwrite it", entry_name.c_str());
-    throw SRE (buf);
-  } 
-
-  i = 0;
-  while (1) {
-    sprintf(buf, "%s%s/zman_%d.json", home.c_str(), DIR_NAME, i);
-    if (stat(buf, &stat_buf) < 0) { 
-      content = json::object();
-      break;
-    }
-    if (stat_buf.st_size < MAX_FILE_SIZE) {
-      get_json_from_file(content, (string) buf);
-      break;
-    }
-    i++;
-  }
-
-  if (append == false && overwrite == false) {
-    table[entry_name] = (string) buf;
-    write_json_to_file(table, s);
-  }
-
-  set_entry(content, entry_name, buf, append);
-  if (append) printf("Append to entry %s successfully\n", entry_name.c_str());
-  else if (overwrite) printf("Overwrite entry %s successfully\n", entry_name.c_str());
-  else printf("Add new entry %s successfully\n", entry_name.c_str());
-}
 
 void usage() {
   cerr << "zman action [entry_name]" << endl;
@@ -281,7 +296,7 @@ void usage() {
   cerr << "  o/overwrite: overwrite a entry with new content" << endl;
   cerr << "  append:      append the new content to a entry" << endl;
   cerr << "  rm/remove:   remove a entry" << endl;
-  cerr << "  l/list:      list all enties" << endl;
+  cerr << "  l/list:      list all entries" << endl;
   cerr << "  g/get:       get the content of an entry" << endl;
   cerr << endl;
   cerr << "zman reads the content from stdin" << endl;
