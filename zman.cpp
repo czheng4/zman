@@ -4,7 +4,6 @@
 #include <sys/stat.h>
 #include <cstdlib>
 #include <cstdio>
-#include <vector>
 #include <map>
 using namespace std;
 
@@ -15,7 +14,7 @@ using namespace std;
 typedef std::runtime_error SRE;
 
 
-inline void get_map_from_file(map <string, string> &m, const string &filename) {
+static void get_map_from_file(map <string, string> &m, const string &filename) {
   FILE *f;
   int size;
   char *key, *val;
@@ -39,7 +38,7 @@ inline void get_map_from_file(map <string, string> &m, const string &filename) {
 
     s = "";
     for (i = 0; i < size; i++) s += val[i];
-    m.insert(make_pair((string)key, s));
+    m.insert(make_pair((string) key, std::move(s)));
 
     delete key;
     delete val;
@@ -48,10 +47,9 @@ inline void get_map_from_file(map <string, string> &m, const string &filename) {
   fclose(f);
 }
 
-inline void write_map_to_file(const map <string, string> &m, const string &filename) {
+static void write_map_to_file(const map <string, string> &m, const string &filename) {
   FILE *f;
   int size;
-  map <string, string>::const_iterator mit;
 
   /* if the json is empty, we simply delete them */
   if (m.size() == 0 && filename.find("table.txt") == string::npos) {
@@ -62,7 +60,7 @@ inline void write_map_to_file(const map <string, string> &m, const string &filen
   f = fopen(filename.c_str(), "w");
   if (f == NULL) throw SRE ("Couldn't open file " + filename);
   
-  for (mit = m.begin(); mit != m.end(); ++mit) {
+  for (auto mit = m.begin(); mit != m.end(); ++mit) {
     size = (mit->first).size();
     fwrite(&size, sizeof(int), 1, f);
     fwrite((mit->first).c_str(), sizeof(char), size, f);
@@ -75,7 +73,7 @@ inline void write_map_to_file(const map <string, string> &m, const string &filen
   fclose(f);
 }
 
-inline string to_lowercase(const string &from) {
+static string to_lowercase(const string &from) {
   size_t i;
   string s = from;
   for (i = 0; i < s.size(); i++) {
@@ -197,14 +195,13 @@ void Man::set_entry(const string &entry_name, const string &filename, bool appen
   ofstream o;
 
 
-  if (append && content.find(entry_name) != content.end()) s = content[entry_name];
+  if (append && content.find(entry_name) != content.end()) s = content[entry_name] + "\n";
   else s = "";
 
   while (getline(cin, line)) s += line + "\n";
 
   s.pop_back();
-
-  content[entry_name] = s;
+  content[entry_name] = std::move(s);
   write_map_to_file(content, filename);
 }
 
@@ -236,10 +233,10 @@ void Man::add_entry(const string &entry_name, bool append, bool overwrite) {
   }
 
 
-  set_entry(entry_name, buf, append);
+  set_entry(entry_name, (string) buf, append);
 
   if (append == false && overwrite == false) {
-    entries[entry_name] = strdup(buf);
+    entries[entry_name] = string (buf);
     write_map_to_file(entries, s);
   }
   if (append) printf("Append to entry %s successfully\n", entry_name.c_str());
