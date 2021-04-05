@@ -51,7 +51,7 @@ static void write_map_to_file(const map <string, string> &m, const string &filen
   FILE *f;
   int size;
 
-  /* if the json is empty, we simply delete them */
+  /* if the map is empty, we simply delete them */
   if (m.size() == 0 && filename.find("table.txt") == string::npos) {
     if (remove(filename.c_str()) != 0) throw SRE ("Couldn't open file " + filename);
     return;
@@ -252,8 +252,6 @@ Man::Man(const char *a, const char *entry_name) {
 
   create_default_file();
   get_map_from_file(entries, home + TABLE_PATH);
-
-  // get_all_entries();
 
   if (s == "add") {
     if (entry_name == NULL) throw SRE("add action must have entry name");
