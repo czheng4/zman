@@ -200,7 +200,7 @@ void Man::set_entry(const string &entry_name, const string &filename, bool appen
 
   while (getline(cin, line)) s += line + "\n";
 
-  s.pop_back();
+  if (line != "") s.pop_back();
   content[entry_name] = std::move(s);
   write_map_to_file(content, filename);
 }
